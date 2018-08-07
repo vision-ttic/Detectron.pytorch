@@ -101,14 +101,14 @@ class Generalized_RCNN(nn.Module):
         # BBOX Branch
         if not cfg.MODEL.RPN_ONLY:
             self.Box_Head = get_func(cfg.FAST_RCNN.ROI_BOX_HEAD)(
-                self.RPN.dim_out, self.roi_feature_transform, self.Conv_Body.spatial_scale)
+                self.Conv_Body.dim_out, self.roi_feature_transform, self.Conv_Body.spatial_scale)
             self.Box_Outs = fast_rcnn_heads.fast_rcnn_outputs(
                 self.Box_Head.dim_out)
 
         # Mask Branch
         if cfg.MODEL.MASK_ON:
             self.Mask_Head = get_func(cfg.MRCNN.ROI_MASK_HEAD)(
-                self.RPN.dim_out, self.roi_feature_transform, self.Conv_Body.spatial_scale)
+                self.Conv_Body.dim_out, self.roi_feature_transform, self.Conv_Body.spatial_scale)
             if getattr(self.Mask_Head, 'SHARE_RES5', False):
                 self.Mask_Head.share_res5_module(self.Box_Head.res5)
             self.Mask_Outs = mask_rcnn_heads.mask_rcnn_outputs(self.Mask_Head.dim_out)
@@ -116,7 +116,7 @@ class Generalized_RCNN(nn.Module):
         # Keypoints Branch
         if cfg.MODEL.KEYPOINTS_ON:
             self.Keypoint_Head = get_func(cfg.KRCNN.ROI_KEYPOINTS_HEAD)(
-                self.RPN.dim_out, self.roi_feature_transform, self.Conv_Body.spatial_scale)
+                self.Conv_Body.dim_out, self.roi_feature_transform, self.Conv_Body.spatial_scale)
             if getattr(self.Keypoint_Head, 'SHARE_RES5', False):
                 self.Keypoint_Head.share_res5_module(self.Box_Head.res5)
             self.Keypoint_Outs = keypoint_rcnn_heads.keypoint_outputs(self.Keypoint_Head.dim_out)
@@ -154,7 +154,10 @@ class Generalized_RCNN(nn.Module):
 
         blob_conv = self.Conv_Body(im_data)
 
-        rpn_ret = self.RPN(blob_conv, im_info, roidb)
+        if cfg.RPN.RPN_ON:
+            rpn_ret = self.RPN(blob_conv, im_info, roidb)
+        else:
+            rpn_ret = rpn_kwargs
 
         # if self.training:
         #     # can be used to infer fg/bg ratio
@@ -182,26 +185,27 @@ class Generalized_RCNN(nn.Module):
             return_dict['losses'] = {}
             return_dict['metrics'] = {}
             # rpn loss
-            rpn_kwargs.update(dict(
-                (k, rpn_ret[k]) for k in rpn_ret.keys()
-                if (k.startswith('rpn_cls_logits') or k.startswith('rpn_bbox_pred'))
-            ))
-            loss_rpn_cls, loss_rpn_bbox = rpn_heads.generic_rpn_losses(**rpn_kwargs)
-            if cfg.FPN.FPN_ON:
-                for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
-                    return_dict['losses']['loss_rpn_cls_fpn%d' % lvl] = loss_rpn_cls[i]
-                    return_dict['losses']['loss_rpn_bbox_fpn%d' % lvl] = loss_rpn_bbox[i]
-            else:
-                return_dict['losses']['loss_rpn_cls'] = loss_rpn_cls
-                return_dict['losses']['loss_rpn_bbox'] = loss_rpn_bbox
+            if cfg.RPN.RPN_ON:
+                rpn_kwargs.update(dict(
+                    (k, rpn_ret[k]) for k in rpn_ret.keys()
+                    if (k.startswith('rpn_cls_logits') or k.startswith('rpn_bbox_pred'))
+                ))
+                loss_rpn_cls, loss_rpn_bbox = rpn_heads.generic_rpn_losses(**rpn_kwargs)
+                if cfg.FPN.FPN_ON:
+                    for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
+                        return_dict['losses']['loss_rpn_cls_fpn%d' % lvl] = loss_rpn_cls[i]
+                        return_dict['losses']['loss_rpn_bbox_fpn%d' % lvl] = loss_rpn_bbox[i]
+                else:
+                    return_dict['losses']['loss_rpn_cls'] = loss_rpn_cls
+                    return_dict['losses']['loss_rpn_bbox'] = loss_rpn_bbox
 
-            # bbox loss
-            loss_cls, loss_bbox, accuracy_cls = fast_rcnn_heads.fast_rcnn_losses(
-                cls_score, bbox_pred, rpn_ret['labels_int32'], rpn_ret['bbox_targets'],
-                rpn_ret['bbox_inside_weights'], rpn_ret['bbox_outside_weights'])
-            return_dict['losses']['loss_cls'] = loss_cls
-            return_dict['losses']['loss_bbox'] = loss_bbox
-            return_dict['metrics']['accuracy_cls'] = accuracy_cls
+                # bbox loss
+                loss_cls, loss_bbox, accuracy_cls = fast_rcnn_heads.fast_rcnn_losses(
+                    cls_score, bbox_pred, rpn_ret['labels_int32'], rpn_ret['bbox_targets'],
+                    rpn_ret['bbox_inside_weights'], rpn_ret['bbox_outside_weights'])
+                return_dict['losses']['loss_cls'] = loss_cls
+                return_dict['losses']['loss_bbox'] = loss_bbox
+                return_dict['metrics']['accuracy_cls'] = accuracy_cls
 
             if cfg.MODEL.MASK_ON:
                 if getattr(self.Mask_Head, 'SHARE_RES5', False):

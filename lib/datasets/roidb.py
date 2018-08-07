@@ -34,6 +34,42 @@ from .json_dataset import JsonDataset
 logger = logging.getLogger(__name__)
 
 
+"""
+HC:
+roidb:
+[
+for each img:
+    assume num_boxes = 8
+    {
+    --------------- from coco.loadImgs ------------------
+    id: 101
+    image: sys_abs_path_to_img (path prefix from this module)
+    coco_url: xx.com
+    flickr_url: yy.com
+    height: 300
+    width: 600
+    ------ by _add_gt_annotations or _merge_proposal_boxes_into_roidb ---------
+    flipped: true
+    has_visible_keypoints: False
+    dataset: JsonDataset object
+    boxes: arr(8,4)
+    segms: list(8) of segm polygon list
+    seg_areas: arr(8,) zero for proposal boxes.
+    gt_classes: arr(8,) zero for proposal boxes.
+    is_crowd: arr(8,) of Boolean
+    gt_overlaps: sparse arr(8, 81). This is about cls, not box. Every box has it.
+    box_to_gt_ind_map: arr(8,)
+    --------------- by _add_class_assignments ----------
+    max_classes: arr(8,) Every box has max_* but only gt have valid gt_classes.
+    max_overlaps: arr(8,)
+    -----------by bbox_regression ------------
+    bbox_targets: arr(8,5)
+    }
+]
+
+"""
+
+
 def combined_roidb_for_training(dataset_names, proposal_files):
     """Load and concatenate roidbs for one or more datasets, along with optional
     object proposals. The roidb entries are then prepared for use in training,
@@ -192,12 +228,17 @@ def add_bbox_regression_targets(roidb):
         entry['bbox_targets'] = _compute_targets(entry)
 
 
+"""
+box_to_gt_ind_map differs from gt_assignment in that gt_assignment allows
+crowd objects as ground truths. This does not.
+"""
 def _compute_targets(entry):
     """Compute bounding-box regression targets for an image."""
     # Indices of ground-truth ROIs
     rois = entry['boxes']
     overlaps = entry['max_overlaps']
     labels = entry['max_classes']
+    # HC: indices of ground truth boxes
     gt_inds = np.where((entry['gt_classes'] > 0) & (entry['is_crowd'] == 0))[0]
     # Targets has format (class, tx, ty, tw, th)
     targets = np.zeros((rois.shape[0], 5), dtype=np.float32)

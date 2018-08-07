@@ -46,6 +46,7 @@ class single_scale_rpn_outputs(nn.Module):
             aspect_ratios=cfg.RPN.ASPECT_RATIOS)
         num_anchors = anchors.shape[0]
 
+        # HC: notice that here the conv all have bias. esp RPN_conv
         # RPN hidden representation
         self.RPN_conv = nn.Conv2d(self.dim_in, self.dim_out, 3, 1, 1)
         # Proposal classification scores
@@ -148,7 +149,7 @@ def single_scale_rpn_losses(
         loss_rpn_cls = F.cross_entropy(
             rpn_cls_logits, rpn_labels_int32, ignore_index=-1)
     else:
-        weight = (rpn_labels_int32 >= 0).float()
+        weight = (rpn_labels_int32 >= 0).float()  # HC: those -1 are ignored
         loss_rpn_cls = F.binary_cross_entropy_with_logits(
             rpn_cls_logits, rpn_labels_int32.float(), weight, size_average=False)
         loss_rpn_cls /= weight.sum()

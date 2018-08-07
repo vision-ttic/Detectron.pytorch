@@ -68,12 +68,15 @@ def get_field_of_anchors(
     # Enumerate all shifted positions on the (H, W) grid
     fpn_max_size = cfg.FPN.COARSEST_STRIDE * np.ceil(
         cfg.TRAIN.MAX_SIZE / float(cfg.FPN.COARSEST_STRIDE)
-    )
+    )  # HC: round up above MAX_SIZE modulo FPN largest stride (32).
     field_size = int(np.ceil(fpn_max_size / float(stride)))
     shifts = np.arange(0, field_size) * stride
     shift_x, shift_y = np.meshgrid(shifts, shifts)
     shift_x = shift_x.ravel()
     shift_y = shift_y.ravel()
+    # HC: these shifts the anchor center x and y respectively on a cartesian
+    # grid with stride. Add them to anchor and broadcast for flower
+    # repeat shift_x for x1 and x2. They are shifted the same
     shifts = np.vstack((shift_x, shift_y, shift_x, shift_y)).transpose()
 
     # Broacast anchors over shifts to enumerate all anchors at all positions

@@ -90,7 +90,7 @@ def add_rpn_blobs(blobs, im_scales, roidb):
                 im_height, im_width, [foa], all_anchors, gt_rois
             )
             for k, v in rpn_blobs.items():
-                blobs[k].append(v)
+                blobs[k].append(v)  # interesting design. always append. Why?
 
     for k, v in blobs.items():
         if isinstance(v, list) and len(v) > 0:
@@ -125,7 +125,7 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
             (all_anchors[:, 1] >= -straddle_thresh) &
             (all_anchors[:, 2] < im_width + straddle_thresh) &
             (all_anchors[:, 3] < im_height + straddle_thresh)
-        )[0]
+        )[0]  # only about 36466 out of 105840 anchors left
         # keep only inside anchors
         anchors = all_anchors[inds_inside, :]
     else:
@@ -184,7 +184,7 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
     # samples will not have repeats)
     num_bg = cfg.TRAIN.RPN_BATCH_SIZE_PER_IM - np.sum(labels == 1)
     bg_inds = np.where(anchor_to_gt_max < cfg.TRAIN.RPN_NEGATIVE_OVERLAP)[0]
-    if len(bg_inds) > num_bg:
+    if len(bg_inds) > num_bg:  # HC: WARNING assumes that this is always true.
         enable_inds = bg_inds[npr.randint(len(bg_inds), size=num_bg)]
         labels[enable_inds] = 0
     bg_inds = np.where(labels == 0)[0]
@@ -209,7 +209,7 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
     # average over the mini-batch is correct
     bbox_outside_weights = np.zeros((num_inside, 4), dtype=np.float32)
     # uniform weighting of examples (given non-uniform sampling)
-    num_examples = np.sum(labels >= 0)
+    num_examples = np.sum(labels >= 0)  # 256
     bbox_outside_weights[labels == 1, :] = 1.0 / num_examples
     bbox_outside_weights[labels == 0, :] = 1.0 / num_examples
 

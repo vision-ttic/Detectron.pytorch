@@ -13,6 +13,27 @@ from roi_data.minibatch import get_minibatch
 import utils.blob as blob_utils
 # from model.rpn.bbox_transform import bbox_transform_inv, clip_boxes
 
+"""
+blob keys:
+'data',
+'im_info', (height, width, scale)
+'roidb', (serialized)
+'rpn_labels_int32_wide',
+'rpn_bbox_targets_wide',
+'rpn_bbox_inside_weights_wide',
+'rpn_bbox_outside_weights_wide'
+"""
+
+"""
+HC:
+It is easy to infer based on this code organization that the original detectron
+has its own thread loading module. There was a sampler that decides which roidbs
+to go in one batch and then get_minibatch loads those images together (roidbs)
+in a readily batched form.
+
+Now that we switch to pytorch's dataset abstraction, each roidb has to be loaded
+separately and then batched later by pytorch loader thread using collate_fn.
+"""
 
 class RoiDataLoader(data.Dataset):
     def __init__(self, roidb, num_classes, training=True):
@@ -31,6 +52,7 @@ class RoiDataLoader(data.Dataset):
         # Squeeze batch dim
         for key in blobs:
             if key != 'roidb':
+                # so that pytorch loader collate can add back
                 blobs[key] = blobs[key].squeeze(axis=0)
 
         if self._roidb[index]['need_crop']:
@@ -52,6 +74,11 @@ class RoiDataLoader(data.Dataset):
         return blobs
 
     def crop_data(self, blobs, ratio):
+        """
+        HC:
+        this croppping does not take care of rpn labels and reg targets.
+        Can be seriously wrong.
+        """
         data_height, data_width = map(int, blobs['im_info'][:2])
         boxes = blobs['roidb'][0]['boxes']
         if ratio < 1:  # width << height, crop height
@@ -118,7 +145,7 @@ class RoiDataLoader(data.Dataset):
 
 def cal_minibatch_ratio(ratio_list):
     """Given the ratio_list, we want to make the RATIO same for each minibatch on each GPU.
-    Note: this only work for 1) cfg.TRAIN.MAX_SIZE is ignored during `prep_im_for_blob` 
+    Note: this only work for 1) cfg.TRAIN.MAX_SIZE is ignored during `prep_im_for_blob`
     and 2) cfg.TRAIN.SCALES containing SINGLE scale.
     Since all prepared images will have same min side length of cfg.TRAIN.SCALES[0], we can
      pad and batch images base on that.
@@ -144,6 +171,11 @@ def cal_minibatch_ratio(ratio_list):
     return ratio_list_minibatch
 
 
+"""
+HC:
+again, no randomness within batch since per batch ratio is fixed.
+When doing aspect ratio grouping, simply permute across batches
+"""
 class MinibatchSampler(torch_sampler.Sampler):
     def __init__(self, ratio_list, ratio_index):
         self.ratio_list = ratio_list
@@ -163,7 +195,8 @@ class MinibatchSampler(torch_sampler.Sampler):
             indices = np.arange(round_num_data)
             npr.shuffle(indices.reshape(-1, cfg.TRAIN.IMS_PER_BATCH))  # inplace shuffle
             if rem != 0:
-                indices = np.append(indices, np.arange(round_num_data, round_num_data + rem))
+                indices = np.append(
+                    indices, np.arange(round_num_data, round_num_data + rem))
             ratio_index = self.ratio_index[indices]
             ratio_list_minibatch = self.ratio_list_minibatch[indices]
         else:
@@ -231,6 +264,10 @@ def collate_minibatch(list_of_blobs):
     """Stack samples seperately and return a list of minibatches
     A batch contains NUM_GPUS minibatches and image size in different minibatch may be different.
     Hence, we need to stack smaples from each minibatch seperately.
+    """
+    """
+    HC:
+    Batch contains lists so that it can be split later by parallel forward
     """
     Batch = {key: [] for key in list_of_blobs[0]}
     # Because roidb consists of entries of variable length, it can't be batch into a tensor.

@@ -60,7 +60,7 @@ def generate_anchors(
     """
     return _generate_anchors(
         stride,
-        np.array(sizes, dtype=np.float) / stride,
+        np.array(sizes, dtype=np.float) / stride,  # 2,4,6,16,32
         np.array(aspect_ratios, dtype=np.float)
     )
 

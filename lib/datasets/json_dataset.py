@@ -50,6 +50,56 @@ from .dataset_catalog import IM_PREFIX
 logger = logging.getLogger(__name__)
 
 
+"""
+HC:
+Basic pipeline:
+gt boxes and proposed boxes are treated uniformly.
+Each box has a max gt_overlap. For gt box, it is one's self. For proposed box,
+it is the max overlap gt box.
+For gt, their gt_overlap is 1 for self 0 for other cls.
+If the box is crowd, -1 for all cls.
+For proposal, the fill is the actual max overlap value.
+
+The class of this max overlapped target is the class of the current box.
+This is provided by _add_class_assignments. Uniform for gt and proposal.
+
+box_to_gt_ind_map records exactly which gt box this current box is max overlapping.
+Other meta only contains overlap info w.r.p to classes. This is more precise.
+
+These metadata are added from different stages and my doc here is not accurate.
+Come back later.
+
+roidb:
+[
+for each img:
+    assume num_boxes = 8
+    {
+    --------------- from coco.loadImgs ------------------
+    id: 101
+    image: sys_abs_path_to_img (path prefix from this module)
+    coco_url: xx.com
+    flickr_url: yy.com
+    height: 300
+    width: 600
+    ------ by _add_gt_annotations or _merge_proposal_boxes_into_roidb ---------
+    flipped: true
+    has_visible_keypoints: False
+    dataset: JsonDataset object
+    boxes: arr(8,4)
+    segms: list(8) of segm polygon list
+    seg_areas: arr(8,) zero for proposal boxes.
+    gt_classes: arr(8,) zero for proposal boxes.
+    is_crowd: arr(8,) of Boolean
+    gt_overlaps: sparse arr(8, 81) of IoU overlap with cls, not box.
+    box_to_gt_ind_map: arr(8,)
+    --------------- by _add_class_assignments ----------
+    max_classes: arr(8,) Every box has max_* but only gt have valid gt_classes.
+    max_overlaps: arr(8,)
+    }
+]
+"""
+
+
 class JsonDataset(object):
     """A class representing a COCO json dataset."""
 
@@ -77,11 +127,11 @@ class JsonDataset(object):
         self.json_category_id_to_contiguous_id = {
             v: i + 1
             for i, v in enumerate(self.COCO.getCatIds())
-        }
+        }  # HC: some coco categories are empty. Hence squeeze the gaps. 90: 80
         self.contiguous_category_id_to_json_id = {
             v: k
             for k, v in self.json_category_id_to_contiguous_id.items()
-        }
+        }  # 1:1 ... 56: 61 ... 80: 90
         self._init_keypoints()
 
         # # Set cfg.MODEL.NUM_CLASSES
@@ -131,7 +181,7 @@ class JsonDataset(object):
         image_ids = self.COCO.getImgIds()
         image_ids.sort()
         if cfg.DEBUG:
-            roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))[:100]
+            roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))[:5]
         else:
             roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
         for entry in roidb:
@@ -247,7 +297,7 @@ class JsonDataset(object):
         is_crowd = np.zeros((num_valid_objs), dtype=entry['is_crowd'].dtype)
         box_to_gt_ind_map = np.zeros(
             (num_valid_objs), dtype=entry['box_to_gt_ind_map'].dtype
-        )
+        )  # HC: [1,0,3,0,5,6] invalid ones won't be filled later.
         if self.keypoints is not None:
             gt_keypoints = np.zeros(
                 (num_valid_objs, 3, self.num_keypoints),
@@ -410,6 +460,10 @@ class JsonDataset(object):
         return gt_kps
 
 
+"""
+HC:
+This is called by RPN and other modules.
+"""
 def add_proposals(roidb, rois, scales, crowd_thresh):
     """Add proposal boxes (rois) to an roidb that has ground-truth annotations
     but no proposals. If the proposals are not at the original image scale,
@@ -433,7 +487,7 @@ def _merge_proposal_boxes_into_roidb(roidb, box_list):
         boxes = box_list[i]
         num_boxes = boxes.shape[0]
         gt_overlaps = np.zeros(
-            (num_boxes, entry['gt_overlaps'].shape[1]),
+            (num_boxes, entry['gt_overlaps'].shape[1]),  # HC: num_classes
             dtype=entry['gt_overlaps'].dtype
         )
         box_to_gt_ind_map = -np.ones(

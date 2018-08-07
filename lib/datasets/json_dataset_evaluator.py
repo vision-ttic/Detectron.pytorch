@@ -220,7 +220,7 @@ def _log_detection_eval_metrics(json_dataset, coco_eval):
     logger.info(
         '~~~~ Mean and per-category AP @ IoU=[{:.2f},{:.2f}] ~~~~'.format(
             IoU_lo_thresh, IoU_hi_thresh))
-    logger.info('{:.1f}'.format(100 * ap_default))
+    logger.info('{:.1f}%'.format(100 * ap_default))
     for cls_ind, cls in enumerate(json_dataset.classes):
         if cls == '__background__':
             continue
@@ -228,7 +228,7 @@ def _log_detection_eval_metrics(json_dataset, coco_eval):
         precision = coco_eval.eval['precision'][
             ind_lo:(ind_hi + 1), :, cls_ind - 1, 0, 2]
         ap = np.mean(precision[precision > -1])
-        logger.info('{:.1f}'.format(100 * ap))
+        logger.info('{}: {:.1f}%'.format(cls, 100 * ap))
     logger.info('~~~~ Summary metrics ~~~~')
     coco_eval.summarize()
 

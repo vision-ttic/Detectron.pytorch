@@ -43,8 +43,9 @@ class ResNet_convX_body(nn.Module):
     def __init__(self, block_counts):
         super().__init__()
         self.block_counts = block_counts
-        self.convX = len(block_counts) + 1
-        self.num_layers = (sum(block_counts) + 3 * (self.convX == 4)) * 3 + 2
+        self.convX = len(block_counts) + 1  # HC: the unreached conv stage
+        # HC: Each block has 3 layers. the last stage always has 3 blocks
+        self.num_layers = 3 * ( sum(block_counts) + 3 * (self.convX == 4) ) + 2
 
         self.res1 = globals()[cfg.RESNETS.STEM_FUNC]()
         dim_in = 64

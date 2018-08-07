@@ -52,7 +52,7 @@ class GenerateProposalsOp(nn.Module):
         # 6. apply NMS with a loose threshold (0.7) to the remaining proposals
         # 7. take after_nms_topN proposals after NMS
         # 8. return the top proposals
-        
+
         """Type conversion"""
         # predicted probability of fg object for each RPN anchor
         scores = rpn_cls_prob.data.cpu().numpy()
@@ -90,8 +90,11 @@ class GenerateProposalsOp(nn.Module):
         roi_probs = np.empty((0, 1), dtype=np.float32)
         for im_i in range(num_images):
             im_i_boxes, im_i_probs = self.proposals_for_one_image(
-                im_info[im_i, :], all_anchors, bbox_deltas[im_i, :, :, :],
-                scores[im_i, :, :, :])
+                im_info[im_i, :],
+                all_anchors,
+                bbox_deltas[im_i, :, :, :],
+                scores[im_i, :, :, :]
+            )
             batch_inds = im_i * np.ones(
                 (im_i_boxes.shape[0], 1), dtype=np.float32)
             im_i_rois = np.hstack((batch_inds, im_i_boxes))
@@ -146,7 +149,7 @@ class GenerateProposalsOp(nn.Module):
 
         # 2. clip proposals to image (may result in proposals with zero area
         # that will be removed in the next step)
-        proposals = box_utils.clip_tiled_boxes(proposals, im_info[:2])
+        proposals = box_utils.clip_tiled_boxes(proposals, im_info[:2])  #(12000, 4)
 
         # 3. remove predicted boxes with either height or width < min_size
         keep = _filter_boxes(proposals, min_size, im_info)

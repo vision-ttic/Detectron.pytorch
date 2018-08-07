@@ -145,9 +145,11 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     if cfg.PYTORCH_VERSION_LESS_THAN_040:
         inputs['data'] = [Variable(torch.from_numpy(inputs['data']), volatile=True)]
         inputs['im_info'] = [Variable(torch.from_numpy(inputs['im_info']), volatile=True)]
+        inputs['rois'] = [inputs['rois']]
     else:
         inputs['data'] = [torch.from_numpy(inputs['data'])]
         inputs['im_info'] = [torch.from_numpy(inputs['im_info'])]
+        inputs['rois'] = [inputs['rois']]
 
     return_dict = model(**inputs)
 

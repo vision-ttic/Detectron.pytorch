@@ -235,6 +235,8 @@ def test_net(
     all_boxes, all_segms, all_keyps = empty_results(num_classes, num_images)
     timers = defaultdict(Timer)
     for i, entry in enumerate(roidb):
+        # if i > 100:
+        #     break
         if cfg.TEST.PRECOMPUTED_PROPOSALS:
             # The roidb may contain ground-truth rois (for example, if the roidb
             # comes from the training or val split). We only want to evaluate
@@ -248,9 +250,14 @@ def test_net(
             # Faster R-CNN type models generate proposals on-the-fly with an
             # in-network RPN; 1-stage models don't require proposals.
             box_proposals = None
+            if not cfg.RPN.RPN_ON:  # means we are doing gt testing. LOL
+                box_proposals = entry['boxes']
+                if len(box_proposals) == 0:
+                    continue
 
         im = cv2.imread(entry['image'])
-        cls_boxes_i, cls_segms_i, cls_keyps_i = im_detect_all(model, im, box_proposals, timers)
+        cls_boxes_i, cls_segms_i, cls_keyps_i = \
+            im_detect_all(model, im, box_proposals, timers)
 
         extend_results(i, all_boxes, cls_boxes_i)
         if cls_segms_i is not None:
@@ -348,11 +355,13 @@ def get_roidb_and_dataset(dataset_name, proposal_file, ind_range):
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'
         roidb = dataset.get_roidb(
+            gt=False,
             proposal_file=proposal_file,
             proposal_limit=cfg.TEST.PROPOSAL_LIMIT
         )
     else:
-        roidb = dataset.get_roidb()
+        # HC: test mAP on gt boxes when RPN is off and no precomputed proposals
+        roidb = dataset.get_roidb(gt=not cfg.RPN.RPN_ON)
 
     if ind_range is not None:
         total_num_images = len(roidb)
