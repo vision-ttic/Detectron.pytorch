@@ -412,7 +412,7 @@ class fpn_rpn_outputs(nn.Module):
                 return_dict['rpn_rois_prob_fpn' + slvl] = fpn_rpn_roi_probs
 
         if cfg.MODEL.FASTER_RCNN:
-            # CollectAndDistributeFpnRpnProposals also labels proposals when in training mode
+            # this labels proposals under training mode
             blobs_out = self.CollectAndDistributeFpnRpnProposals(rois_blobs + score_blobs, roidb, im_info)
             return_dict.update(blobs_out)
 

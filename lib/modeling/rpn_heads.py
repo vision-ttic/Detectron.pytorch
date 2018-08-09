@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from core.config import cfg
 from modeling.generate_anchors import generate_anchors
 from modeling.generate_proposals import GenerateProposalsOp
-from modeling.generate_proposal_labels import GenerateProposalLabelsOp
+from modeling.generate_proposal_labels import add_proposals_to_roidb_and_get_labels
 import modeling.FPN as FPN
 import utils.net as net_utils
 
@@ -57,7 +57,7 @@ class single_scale_rpn_outputs(nn.Module):
         self.RPN_bbox_pred = nn.Conv2d(self.dim_out, num_anchors * 4, 1, 1, 0)
 
         self.RPN_GenerateProposals = GenerateProposalsOp(anchors, spatial_scale)
-        self.RPN_GenerateProposalLabels = GenerateProposalLabelsOp()
+        self.RPN_GenerateProposalLabels = add_proposals_to_roidb_and_get_labels
 
         self._init_weights()
 

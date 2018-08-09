@@ -264,7 +264,7 @@ def _add_multilevel_rois(blobs):
         # the box coordinates from columns 1:5
         target_lvls = fpn_utils.map_rois_to_fpn_levels(
             blobs[rois_blob_name][:, 1:5], lvl_min, lvl_max
-        )
+        )  # HC: only take out the 4 coordinates
         # Add per FPN level roi blobs named like: <rois_blob_name>_fpn<lvl>
         fpn_utils.add_multilevel_roi_blobs(
             blobs, rois_blob_name, blobs[rois_blob_name], target_lvls, lvl_min,

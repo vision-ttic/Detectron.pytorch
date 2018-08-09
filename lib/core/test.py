@@ -145,11 +145,15 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     if cfg.PYTORCH_VERSION_LESS_THAN_040:
         inputs['data'] = [Variable(torch.from_numpy(inputs['data']), volatile=True)]
         inputs['im_info'] = [Variable(torch.from_numpy(inputs['im_info']), volatile=True)]
-        inputs['rois'] = [inputs['rois']]
     else:
         inputs['data'] = [torch.from_numpy(inputs['data'])]
         inputs['im_info'] = [torch.from_numpy(inputs['im_info'])]
-        inputs['rois'] = [inputs['rois']]
+
+    for key in inputs.keys():
+        # HC: used for inputs['rois'] and potential other future additions.
+        # the purpose of listing is for it to be split by data parallel layer
+        if key not in ('data', 'im_info'):
+            inputs[key] = [inputs[key]]
 
     return_dict = model(**inputs)
 

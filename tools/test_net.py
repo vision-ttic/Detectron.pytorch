@@ -35,6 +35,11 @@ def parse_args():
         '--load_detectron', help='path to the detectron weight pickle file')
 
     parser.add_argument(
+        '--rpn_only', help='only generate rpn proposals and evaluate AR',
+        action='store_true'
+    )
+
+    parser.add_argument(
         '--output_dir',
         help='output directory to save the testing results. If not provided, '
              'defaults to [args.load_ckpt|args.load_detectron]/../test.')
@@ -79,6 +84,9 @@ if __name__ == '__main__':
         logger.info('Automatically set output directory to %s', args.output_dir)
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
+
+    if args.rpn_only:
+        cfg.MODEL.RPN_ONLY = True
 
     cfg.VIS = args.vis
 

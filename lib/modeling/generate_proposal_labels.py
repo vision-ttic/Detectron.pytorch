@@ -37,3 +37,15 @@ class GenerateProposalLabelsOp(nn.Module):
         roi_data.fast_rcnn.add_fast_rcnn_blobs(blobs, im_scales, roidb)
 
         return blobs
+
+
+def add_proposals_to_roidb_and_get_labels(rpn_rois, roidb, im_info):
+    """
+    HC: this is used to swap out the messy code block that appears several times
+    """
+    im_scales = im_info.data.numpy()[:, 2]
+    output_blob_names = roi_data.fast_rcnn.get_fast_rcnn_blob_names()
+    json_dataset.add_proposals(roidb, rpn_rois, im_scales, crowd_thresh=0)
+    blobs = {k: [] for k in output_blob_names}
+    roi_data.fast_rcnn.add_fast_rcnn_blobs(blobs, im_scales, roidb)
+    return blobs
