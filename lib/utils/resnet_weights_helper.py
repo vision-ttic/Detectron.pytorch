@@ -18,14 +18,14 @@ def load_pretrained_imagenet_weights(model):
         model: the generalized rcnnn module
     """
     _, ext = os.path.splitext(cfg.RESNETS.IMAGENET_PRETRAINED_WEIGHTS)
+    weights_file = os.path.join(cfg.ROOT_DIR, cfg.RESNETS.IMAGENET_PRETRAINED_WEIGHTS)
     if ext == '.pkl':
-        with open(cfg.RESNETS.IMAGENET_PRETRAINED_WEIGHTS, 'rb') as fp:
+        with open(weights_file, 'rb') as fp:
             src_blobs = pickle.load(fp, encoding='latin1')
         if 'blobs' in src_blobs:
             src_blobs = src_blobs['blobs']
         pretrianed_state_dict = src_blobs
     else:
-        weights_file = os.path.join(cfg.ROOT_DIR, cfg.RESNETS.IMAGENET_PRETRAINED_WEIGHTS)
         pretrianed_state_dict = convert_state_dict(torch.load(weights_file))
 
         # Convert batchnorm weights
