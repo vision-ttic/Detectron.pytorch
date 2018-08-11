@@ -174,9 +174,6 @@ class Generalized_RCNN(nn.Module):
             else:
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
             cls_score, bbox_pred = self.Box_Outs(box_feat)
-        else:
-            # TODO: complete the returns for RPN only situation
-            pass
 
         if self.training:
             return_dict['losses'] = {}
@@ -243,9 +240,12 @@ class Generalized_RCNN(nn.Module):
 
         else:
             # Testing
-            return_dict['rois'] = rpn_ret['rois']
-            return_dict['cls_score'] = cls_score
-            return_dict['bbox_pred'] = bbox_pred
+            if not cfg.MODEL.RPN_ONLY:
+                return_dict['rois'] = rpn_ret['rois']
+                return_dict['cls_score'] = cls_score
+                return_dict['bbox_pred'] = bbox_pred
+            else:
+                return_dict.update(rpn_ret)
 
         return return_dict
 

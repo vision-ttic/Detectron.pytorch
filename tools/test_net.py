@@ -5,7 +5,6 @@ import cv2
 import os
 import pprint
 import sys
-import time
 
 import torch
 
@@ -33,6 +32,11 @@ def parse_args():
         '--load_ckpt', help='path of checkpoint to load')
     parser.add_argument(
         '--load_detectron', help='path to the detectron weight pickle file')
+
+    parser.add_argument(
+        '--rpn_only', help='only generate rpn proposals and evaluate AR',
+        action='store_true'
+    )
 
     parser.add_argument(
         '--output_dir',
@@ -79,6 +83,9 @@ if __name__ == '__main__':
         logger.info('Automatically set output directory to %s', args.output_dir)
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
+
+    if args.rpn_only:
+        cfg.MODEL.RPN_ONLY = True
 
     cfg.VIS = args.vis
 
