@@ -130,6 +130,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     inputs, im_scale = _get_blobs(im, boxes, target_scale, target_max_size)
 
     if cfg.DEDUP_BOXES > 0 and not cfg.MODEL.FASTER_RCNN:
+        num_boxes = boxes.shape[0]
         v = np.array([1, 1e3, 1e6, 1e9, 1e12])
         hashes = np.round(inputs['rois'] * cfg.DEDUP_BOXES).dot(v)
         _, index, inv_index = np.unique(
@@ -191,6 +192,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
         # Map scores and predictions back to the original set of boxes
         scores = scores[inv_index, :]
         pred_boxes = pred_boxes[inv_index, :]
+        assert scores.shape[0] == num_boxes
 
     return scores, pred_boxes, im_scale, return_dict['blob_conv']
 

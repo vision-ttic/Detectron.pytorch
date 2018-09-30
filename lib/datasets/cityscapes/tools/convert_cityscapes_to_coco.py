@@ -12,6 +12,7 @@ import sys
 
 import cityscapesscripts.evaluation.instances2dict_with_polygons as cs
 
+import detectron_init_path
 import utils.segms as segms_util
 import utils.boxes as bboxs_util
 
@@ -127,6 +128,7 @@ def convert_cityscapes_instance_only(
         for root, _, files in os.walk(ann_dir):
             for filename in files:
                 if filename.endswith(ends_in % data_set.split('_')[0]):
+                    # e.g. gtFine_polygons.json
                     if len(images) % 50 == 0:
                         print("Processed %s images, %s annotations" % (
                             len(images), len(annotations)))
@@ -181,15 +183,18 @@ def convert_cityscapes_instance_only(
                             annotations.append(ann)
 
         ann_dict['images'] = images
-        categories = [{"id": category_dict[name], "name": name} for name in
-                      category_dict]
+        categories = [
+            {"id": category_dict[name], "name": name}
+            for name in category_dict
+        ]
         ann_dict['categories'] = categories
         ann_dict['annotations'] = annotations
         print("Num categories: %s" % len(categories))
         print("Num images: %s" % len(images))
         print("Num annotations: %s" % len(annotations))
-        with open(os.path.join(out_dir, json_name % data_set), 'wb') as outfile:
-            outfile.write(json.dumps(ann_dict))
+        with open(os.path.join(out_dir, json_name % data_set), 'w') as outfile:
+            # outfile.write(json.dumps(ann_dict))
+            json.dump(ann_dict, outfile)
 
 
 if __name__ == '__main__':

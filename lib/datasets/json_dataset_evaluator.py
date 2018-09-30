@@ -195,6 +195,7 @@ def _do_detection_eval(json_dataset, res_file, output_dir):
     coco_eval.accumulate()
     _log_detection_eval_metrics(json_dataset, coco_eval)
     eval_file = os.path.join(output_dir, 'detection_results.pkl')
+    # eval_file = os.path.join('./', 'old_results.pkl')
     save_object(coco_eval, eval_file)
     logger.info('Wrote json eval results to: {}'.format(eval_file))
     return coco_eval
@@ -271,10 +272,10 @@ def evaluate_box_proposals(
         gt_areas = entry['seg_areas'][gt_inds]
         valid_gt_inds = np.where(
             (gt_areas >= area_range[0]) & (gt_areas <= area_range[1]))[0]
-        gt_boxes = gt_boxes[valid_gt_inds, :]
+        gt_boxes = gt_boxes[valid_gt_inds, :]  # note
         num_pos += len(valid_gt_inds)
         non_gt_inds = np.where(entry['gt_classes'] == 0)[0]
-        boxes = entry['boxes'][non_gt_inds, :]
+        boxes = entry['boxes'][non_gt_inds, :]  # note
         if boxes.shape[0] == 0:
             continue
         if limit is not None and boxes.shape[0] > limit:

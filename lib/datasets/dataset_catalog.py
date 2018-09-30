@@ -38,6 +38,7 @@ RAW_DIR = 'raw_dir'
 
 # Available datasets
 DATASETS = {
+    # Use im_prefix leftImg8bit for cityscapes
     'cityscapes_fine_instanceonly_seg_train': {
         IM_DIR:
             _DATA_DIR + '/cityscapes/images',

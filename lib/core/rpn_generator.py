@@ -49,6 +49,7 @@ from utils.timer import Timer
 import utils.blob as blob_utils
 import utils.env as envu
 import utils.subprocess as subprocess_utils
+import utils.boxes as box_utils
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +254,17 @@ def im_proposals(model, im):
     # so we remove it since we just want to return boxes
     # Scale proposals back to the original input image scale
     boxes = boxes[:, 1:] / im_scale
+
+    # clip to image
+    height, width = im.shape[0], im.shape[1]
+    boxes = box_utils.clip_boxes_to_image(boxes, height, width)
+    # unique boxes after int rounding. a pair of tiny boxes may escape NMS@0.7
+    keep = box_utils.unique_boxes(boxes)
+    boxes, scores = boxes[keep, :], scores[keep]
+    # a valid box should has height and width > 2 pixels
+    keep = box_utils.filter_small_boxes(boxes, min_size=2)
+    boxes, scores = boxes[keep, :], scores[keep]
+
     return boxes, scores
 
 

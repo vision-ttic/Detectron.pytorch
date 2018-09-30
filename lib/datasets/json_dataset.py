@@ -97,6 +97,18 @@ for each img:
     max_overlaps: arr(8,)
     }
 ]
+
+
+proposal format:
+{
+    'boxes': [num_imgs(list), num_box_per_img, 4] The first dimension is a list. e.g. (5000, 1000, 4)
+    'scores': [num_imgs(list), num_box_per_img, 1] e.g. (5000, 1000)
+    'ids': [num_imgs]
+    'cfg': a single string of configurations
+}
+Note that boxes per img is already sorted based on confidence in decreasing order.
+
+
 """
 
 
@@ -396,8 +408,10 @@ class JsonDataset(object):
                 boxes, entry['height'], entry['width']
             )
             keep = box_utils.unique_boxes(boxes)
+            assert len(keep) == len(boxes)
             boxes = boxes[keep, :]
             keep = box_utils.filter_small_boxes(boxes, min_proposal_size)
+            assert len(keep) == len(boxes)
             boxes = boxes[keep, :]
             if top_k > 0:
                 boxes = boxes[:top_k, :]
@@ -486,6 +500,8 @@ def _merge_proposal_boxes_into_roidb(roidb, box_list):
     for i, entry in enumerate(roidb):
         boxes = box_list[i]
         num_boxes = boxes.shape[0]
+        if i % 100 == 0:
+            logger.info("image {}, num_boxes {}".format(i, num_boxes))
         gt_overlaps = np.zeros(
             (num_boxes, entry['gt_overlaps'].shape[1]),  # HC: num_classes
             dtype=entry['gt_overlaps'].dtype
