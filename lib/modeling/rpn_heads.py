@@ -43,7 +43,8 @@ class single_scale_rpn_outputs(nn.Module):
         anchors = generate_anchors(
             stride=1. / spatial_scale,
             sizes=cfg.RPN.SIZES,
-            aspect_ratios=cfg.RPN.ASPECT_RATIOS)
+            aspect_ratios=cfg.RPN.ASPECT_RATIOS
+        )
         num_anchors = anchors.shape[0]
 
         # HC: notice that here the conv all have bias. esp RPN_conv
@@ -56,6 +57,7 @@ class single_scale_rpn_outputs(nn.Module):
         # Proposal bbox regression deltas
         self.RPN_bbox_pred = nn.Conv2d(self.dim_out, num_anchors * 4, 1, 1, 0)
 
+        # HC: this op take batched inputs but return unbatched outputs
         self.RPN_GenerateProposals = GenerateProposalsOp(anchors, spatial_scale)
         self.RPN_GenerateProposalLabels = add_proposals_to_roidb_and_get_labels
 
@@ -94,9 +96,18 @@ class single_scale_rpn_outputs(nn.Module):
         rpn_bbox_pred = self.RPN_bbox_pred(rpn_conv)
 
         return_dict = {
-            'rpn_cls_logits': rpn_cls_logits, 'rpn_bbox_pred': rpn_bbox_pred}
+            'rpn_cls_logits': rpn_cls_logits,
+            'rpn_bbox_pred': rpn_bbox_pred
+        }
 
-        if not self.training or cfg.MODEL.FASTER_RCNN:
+        # if not self.training or cfg.MODEL.FASTER_RCNN:
+        if not (self.training and cfg.MODEL.RPN_ONLY):
+            """
+            HC:
+                Proposal ROIs are NOT needed during RPN only training.
+                Logits are sufficient to generate loss in that case.
+                Otherwise, go generate
+            """
             # Proposals are needed during:
             #  1) inference (== not model.train) for RPN only and Faster R-CNN
             #  OR
@@ -105,24 +116,29 @@ class single_scale_rpn_outputs(nn.Module):
             if cfg.RPN.CLS_ACTIVATION == 'softmax':
                 B, C, H, W = rpn_cls_logits.size()
                 rpn_cls_prob = F.softmax(
-                    rpn_cls_logits.view(B, 2, C // 2, H, W), dim=1)
+                    rpn_cls_logits.view(B, 2, C // 2, H, W), dim=1
+                )
                 rpn_cls_prob = rpn_cls_prob[:, 1].squeeze(dim=1)
             else:
                 rpn_cls_prob = F.sigmoid(rpn_cls_logits)
 
             rpn_rois, rpn_rois_prob = self.RPN_GenerateProposals(
-                rpn_cls_prob, rpn_bbox_pred, im_info)
-
+                rpn_cls_prob, rpn_bbox_pred, im_info
+            )
             return_dict['rpn_rois'] = rpn_rois
             return_dict['rpn_roi_probs'] = rpn_rois_prob
 
-        if cfg.MODEL.FASTER_RCNN :
+        if cfg.MODEL.FASTER_RCNN:
             if self.training:
                 # Add op that generates training labels for in-network RPN proposals
-                blobs_out = self.RPN_GenerateProposalLabels(rpn_rois, roidb, im_info)
+                blobs_out = self.RPN_GenerateProposalLabels(
+                    rpn_rois, roidb, im_info
+                )
                 return_dict.update(blobs_out)
             else:
                 # Alias rois to rpn_rois for inference
+                # HC: cuz fast RCNN expects rois to hold the regions
+                # in training, rois is filled by roi_data/fast_rcnn:186
                 return_dict['rois'] = return_dict['rpn_rois']
 
         return return_dict
@@ -131,7 +147,8 @@ class single_scale_rpn_outputs(nn.Module):
 def single_scale_rpn_losses(
         rpn_cls_logits, rpn_bbox_pred,
         rpn_labels_int32_wide, rpn_bbox_targets_wide,
-        rpn_bbox_inside_weights_wide, rpn_bbox_outside_weights_wide):
+        rpn_bbox_inside_weights_wide, rpn_bbox_outside_weights_wide
+):
     """Add losses for a single scale RPN model (i.e., no FPN)."""
     h, w = rpn_cls_logits.shape[2:]
     rpn_labels_int32 = rpn_labels_int32_wide[:, :, :h, :w]   # -1 means ignore
@@ -151,11 +168,14 @@ def single_scale_rpn_losses(
     else:
         weight = (rpn_labels_int32 >= 0).float()  # HC: those -1 are ignored
         loss_rpn_cls = F.binary_cross_entropy_with_logits(
-            rpn_cls_logits, rpn_labels_int32.float(), weight, size_average=False)
+            rpn_cls_logits, rpn_labels_int32.float(),
+            weight, size_average=False
+        )
         loss_rpn_cls /= weight.sum()
 
     loss_rpn_bbox = net_utils.smooth_l1_loss(
-        rpn_bbox_pred, rpn_bbox_targets, rpn_bbox_inside_weights, rpn_bbox_outside_weights,
-        beta=1/9)
+        rpn_bbox_pred, rpn_bbox_targets,
+        rpn_bbox_inside_weights, rpn_bbox_outside_weights, beta=(1 / 9)
+    )
 
     return loss_rpn_cls, loss_rpn_bbox

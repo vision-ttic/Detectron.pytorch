@@ -54,8 +54,8 @@ def add_rpn_blobs(blobs, im_scales, roidb):
             foas.append(foa)
         all_anchors = np.concatenate([f.field_of_anchors for f in foas])
     else:
-        foa = data_utils.get_field_of_anchors(cfg.RPN.STRIDE, cfg.RPN.SIZES,
-                                              cfg.RPN.ASPECT_RATIOS)
+        foa = data_utils.get_field_of_anchors(
+            cfg.RPN.STRIDE, cfg.RPN.SIZES, cfg.RPN.ASPECT_RATIOS)
         all_anchors = foa.field_of_anchors
 
     for im_i, entry in enumerate(roidb):
@@ -68,10 +68,10 @@ def add_rpn_blobs(blobs, im_scales, roidb):
         gt_rois = entry['boxes'][gt_inds, :] * scale
         # TODO(rbg): gt_boxes is poorly named;
         # should be something like 'gt_rois_info'
-        gt_boxes = blob_utils.zeros((len(gt_inds), 6))
-        gt_boxes[:, 0] = im_i  # batch inds
-        gt_boxes[:, 1:5] = gt_rois
-        gt_boxes[:, 5] = entry['gt_classes'][gt_inds]
+        # gt_boxes = blob_utils.zeros((len(gt_inds), 6))
+        # gt_boxes[:, 0] = im_i  # batch inds
+        # gt_boxes[:, 1:5] = gt_rois
+        # gt_boxes[:, 5] = entry['gt_classes'][gt_inds]
         im_info = np.array([[im_height, im_width, scale]], dtype=np.float32)
         blobs['im_info'].append(im_info)
 
@@ -90,16 +90,17 @@ def add_rpn_blobs(blobs, im_scales, roidb):
                 im_height, im_width, [foa], all_anchors, gt_rois
             )
             for k, v in rpn_blobs.items():
-                blobs[k].append(v)  # interesting design. always append. Why?
+                blobs[k].append(v)
 
     for k, v in blobs.items():
         if isinstance(v, list) and len(v) > 0:
             blobs[k] = np.concatenate(v)
 
     valid_keys = [
-        'has_visible_keypoints', 'boxes', 'segms', 'seg_areas', 'gt_classes',
-        'gt_overlaps', 'is_crowd', 'box_to_gt_ind_map', 'gt_keypoints'
-    ]
+        'has_visible_keypoints', 'gt_keypoints',
+        'boxes', 'segms', 'seg_areas', 'is_crowd',
+        'gt_classes', 'gt_overlaps', 'box_to_gt_ind_map'
+    ]  # WARNING bbox_targets are removed under active RPN!!! Subtle
     minimal_roidb = [{} for _ in range(len(roidb))]
     for i, e in enumerate(roidb):
         for k in valid_keys:
@@ -147,8 +148,8 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
         # Map from anchor to gt box that has highest overlap
         anchor_to_gt_argmax = anchor_by_gt_overlap.argmax(axis=1)
         # For each anchor, amount of overlap with most overlapping gt box
-        anchor_to_gt_max = anchor_by_gt_overlap[np.arange(num_inside),
-                                                anchor_to_gt_argmax]
+        anchor_to_gt_max = \
+            anchor_by_gt_overlap[np.arange(num_inside), anchor_to_gt_argmax]
 
         # Map from gt box to an anchor that has highest overlap
         gt_to_anchor_argmax = anchor_by_gt_overlap.argmax(axis=0)
@@ -166,10 +167,10 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
         # Fg label: for each gt use anchors with highest overlap
         # (including ties)
         labels[anchors_with_max_overlap] = 1
-        # Fg label: above threshold IOU
+        # Fg label: above threshold IOU, often set at 0.7
         labels[anchor_to_gt_max >= cfg.TRAIN.RPN_POSITIVE_OVERLAP] = 1
 
-    # subsample positive labels if we have too many
+    # subsample positive labels if we have too many; often 0.5 * 256
     num_fg = int(cfg.TRAIN.RPN_FG_FRACTION * cfg.TRAIN.RPN_BATCH_SIZE_PER_IM)
     fg_inds = np.where(labels == 1)[0]
     if len(fg_inds) > num_fg:
@@ -181,7 +182,7 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
 
     # subsample negative labels if we have too many
     # (samples with replacement, but since the set of bg inds is large most
-    # samples will not have repeats)
+    # samples will not have repeats)  # overlap threshold often set at 0.3
     num_bg = cfg.TRAIN.RPN_BATCH_SIZE_PER_IM - np.sum(labels == 1)
     bg_inds = np.where(anchor_to_gt_max < cfg.TRAIN.RPN_NEGATIVE_OVERLAP)[0]
     if len(bg_inds) > num_bg:  # HC: WARNING assumes that this is always true.
@@ -226,6 +227,10 @@ def _get_rpn_blobs(im_height, im_width, foas, all_anchors, gt_boxes):
     )
 
     # Split the generated labels, etc. into labels per each field of anchors
+    """
+    Multiple set of foas from different FPN levels are collapsed into all_anchors
+    before being mapped back to respective FPN lvls
+    """
     blobs_out = []
     start_idx = 0
     for foa in foas:

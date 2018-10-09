@@ -50,12 +50,16 @@ class fast_rcnn_outputs(nn.Module):
 def fast_rcnn_losses(cls_score, bbox_pred, label_int32, bbox_targets,
                      bbox_inside_weights, bbox_outside_weights):
     device_id = cls_score.get_device()
-    rois_label = Variable(torch.from_numpy(label_int32.astype('int64'))).cuda(device_id)
+    rois_label = \
+        Variable(torch.from_numpy(label_int32.astype('int64'))).cuda(device_id)
     loss_cls = F.cross_entropy(cls_score, rois_label)
 
-    bbox_targets = Variable(torch.from_numpy(bbox_targets)).cuda(device_id)
-    bbox_inside_weights = Variable(torch.from_numpy(bbox_inside_weights)).cuda(device_id)
-    bbox_outside_weights = Variable(torch.from_numpy(bbox_outside_weights)).cuda(device_id)
+    bbox_targets = \
+        Variable(torch.from_numpy(bbox_targets)).cuda(device_id)
+    bbox_inside_weights = \
+        Variable(torch.from_numpy(bbox_inside_weights)).cuda(device_id)
+    bbox_outside_weights = \
+        Variable(torch.from_numpy(bbox_outside_weights)).cuda(device_id)
     loss_bbox = net_utils.smooth_l1_loss(
         bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights)
 

@@ -252,6 +252,8 @@ def test_net(
                 if len(box_proposals) == 0:
                     continue
 
+        # HC: this raw im will be normalized, scaled (maybe pyramided)
+        # before being fed into detector
         im = cv2.imread(entry['image'])
         cls_boxes_i, cls_segms_i, cls_keyps_i = \
             im_detect_all(model, im, box_proposals, timers)
@@ -388,6 +390,11 @@ def empty_results(num_classes, num_images):
     """
     # Note: do not be tempted to use [[] * N], which gives N references to the
     # *same* empty list.
+    # HC:
+    # These are akin to numpy with [ num_classes x num_images ]
+    # However it is not possible to implement as a numpy matrix since
+    # all_boxes[cls_inx][img_inx] is a numpy array of boxes.
+    # num_pred_boxes per image is variable
     all_boxes = [[[] for _ in range(num_images)] for _ in range(num_classes)]
     all_segms = [[[] for _ in range(num_images)] for _ in range(num_classes)]
     all_keyps = [[[] for _ in range(num_images)] for _ in range(num_classes)]

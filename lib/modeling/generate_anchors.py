@@ -50,6 +50,11 @@ import numpy as np
 #        [ -79., -167.,   96.,  184.],
 #        [-167., -343.,  184.,  360.]])
 
+"""
+HC:
+    anchors in xyxy convention
+    The centerpiece is _mkanchors. Scale and ratio enum depends on this.
+"""
 
 def generate_anchors(
     stride=16, sizes=(32, 64, 128, 256, 512), aspect_ratios=(0.5, 1, 2)
@@ -90,11 +95,16 @@ def _mkanchors(ws, hs, x_ctr, y_ctr):
     """Given a vector of widths (ws) and heights (hs) around a center
     (x_ctr, y_ctr), output a set of anchors (windows).
     """
+    """
+    HC:
+        x_ctr, y_ctr are scalars
+        ws and hs are expanded and broadcast to give [N, 4]
+    """
     ws = ws[:, np.newaxis]
     hs = hs[:, np.newaxis]
     anchors = np.hstack(
         (
-            x_ctr - 0.5 * (ws - 1),
+            x_ctr - 0.5 * (ws - 1),  # [N, 1] for each.
             y_ctr - 0.5 * (hs - 1),
             x_ctr + 0.5 * (ws - 1),
             y_ctr + 0.5 * (hs - 1)

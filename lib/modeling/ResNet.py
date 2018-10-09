@@ -14,6 +14,7 @@ from utils.resnet_weights_helper import convert_state_dict
 # Bits for specific architectures (ResNet50, ResNet101, ...)
 # ---------------------------------------------------------------------------- #
 
+
 def ResNet50_conv4_body():
     return ResNet_convX_body((3, 4, 6))
 
@@ -43,26 +44,49 @@ class ResNet_convX_body(nn.Module):
     def __init__(self, block_counts):
         super().__init__()
         self.block_counts = block_counts
-        self.convX = len(block_counts) + 1  # HC: the unreached conv stage
-        # HC: Each block has 3 layers. the last stage always has 3 blocks
-        self.num_layers = 3 * ( sum(block_counts) + 3 * (self.convX == 4) ) + 2
+        self.convX = len(block_counts) + 1  # HC: highest conv stage, 1 indexed
+        """
+        HC:
+            ResNet starts with a 2 layer stemmer followed by blocks arranged in
+            stages
+            Each block has 3 layers.
+            the last stage always has 3 blocks. Hence the equality check * 3
+            if convX is 4, then cap is at 5, and return all 4 stages
+
+            num_layers seems to be a useless param merely for accounting
+            which variant of backbone is used.
+        """
+        self.num_layers = 2 + 3 * (
+            sum(block_counts) + (self.convX == 4) * 3
+        )
 
         self.res1 = globals()[cfg.RESNETS.STEM_FUNC]()
         dim_in = 64
+        # HC: ResNext config. Read later
         dim_bottleneck = cfg.RESNETS.NUM_GROUPS * cfg.RESNETS.WIDTH_PER_GROUP
-        self.res2, dim_in = add_stage(dim_in, 256, dim_bottleneck, block_counts[0],
-                                      dilation=1, stride_init=1)
-        self.res3, dim_in = add_stage(dim_in, 512, dim_bottleneck * 2, block_counts[1],
-                                      dilation=1, stride_init=2)
-        self.res4, dim_in = add_stage(dim_in, 1024, dim_bottleneck * 4, block_counts[2],
-                                      dilation=1, stride_init=2)
+        self.res2, dim_in = add_stage(
+            dim_in, 256, dim_bottleneck, block_counts[0],
+            dilation=1, stride_init=1
+        )
+        self.res3, dim_in = add_stage(
+            dim_in, 512, dim_bottleneck * 2, block_counts[1],
+            dilation=1, stride_init=2
+        )
+        self.res4, dim_in = add_stage(
+            dim_in, 1024, dim_bottleneck * 4, block_counts[2],
+            dilation=1, stride_init=2
+        )
         if len(block_counts) == 4:
+            # add res5 into the body.
+            # optionally use dilation and stride 1 together for dense fea map
             stride_init = 2 if cfg.RESNETS.RES5_DILATION == 1 else 1
-            self.res5, dim_in = add_stage(dim_in, 2048, dim_bottleneck * 8, block_counts[3],
-                                          cfg.RESNETS.RES5_DILATION, stride_init)
+            self.res5, dim_in = add_stage(
+                dim_in, 2048, dim_bottleneck * 8, block_counts[3],
+                cfg.RESNETS.RES5_DILATION, stride_init
+            )
             self.spatial_scale = 1 / 32 * cfg.RESNETS.RES5_DILATION
         else:
-            self.spatial_scale = 1 / 16  # final feature scale wrt. original image scale
+            self.spatial_scale = 1 / 16  # final conv stride
 
         self.dim_out = dim_in
 
@@ -75,7 +99,10 @@ class ResNet_convX_body(nn.Module):
             freeze_params(getattr(self, 'res%d' % i))
 
         # Freeze all bn (affine) layers !!!
-        self.apply(lambda m: freeze_params(m) if isinstance(m, mynn.AffineChannel2d) else None)
+        self.apply(
+            lambda m: freeze_params(m)
+            if isinstance(m, mynn.AffineChannel2d) else None
+        )
 
     def detectron_weight_mapping(self):
         if cfg.RESNETS.USE_GN:
@@ -117,6 +144,10 @@ class ResNet_convX_body(nn.Module):
 
 
 class ResNet_roi_conv5_head(nn.Module):
+    """
+    HC:
+        ROI pooling layer is used by bbox head
+    """
     def __init__(self, dim_in, roi_xform_func, spatial_scale):
         super().__init__()
         self.roi_xform = roi_xform_func
@@ -124,19 +155,24 @@ class ResNet_roi_conv5_head(nn.Module):
 
         dim_bottleneck = cfg.RESNETS.NUM_GROUPS * cfg.RESNETS.WIDTH_PER_GROUP
         stride_init = cfg.FAST_RCNN.ROI_XFORM_RESOLUTION // 7
-        self.res5, self.dim_out = add_stage(dim_in, 2048, dim_bottleneck * 8, 3,
-                                            dilation=1, stride_init=stride_init)
+        self.res5, self.dim_out = add_stage(
+            dim_in, 2048, dim_bottleneck * 8, 3,
+            dilation=1, stride_init=stride_init
+        )
         self.avgpool = nn.AvgPool2d(7)
 
         self._init_modules()
 
     def _init_modules(self):
         # Freeze all bn (affine) layers !!!
-        self.apply(lambda m: freeze_params(m) if isinstance(m, mynn.AffineChannel2d) else None)
+        self.apply(
+            lambda m: freeze_params(m)
+            if isinstance(m, mynn.AffineChannel2d) else None
+        )
 
     def detectron_weight_mapping(self):
         mapping_to_detectron, orphan_in_detectron = \
-          residual_stage_detectron_mapping(self.res5, 'res5', 3, 5)
+            residual_stage_detectron_mapping(self.res5, 'res5', 3, 5)
         return mapping_to_detectron, orphan_in_detectron
 
     def forward(self, x, rpn_ret):
@@ -156,7 +192,9 @@ class ResNet_roi_conv5_head(nn.Module):
             return x
 
 
-def add_stage(inplanes, outplanes, innerplanes, nblocks, dilation=1, stride_init=2):
+def add_stage(
+    inplanes, outplanes, innerplanes, nblocks, dilation=1, stride_init=2
+):
     """Make a stage consist of `nblocks` residual blocks.
     Returns:
         - stage module: an nn.Sequentail module of residual blocks
@@ -183,10 +221,13 @@ def add_residual_block(inplanes, outplanes, innerplanes, dilation, stride):
         downsample = None
 
     trans_func = globals()[cfg.RESNETS.TRANS_FUNC]
+    # note the group here is about ResNext, not gn
+    # gn num_groups is obtained through global config
     res_block = trans_func(
         inplanes, outplanes, innerplanes, stride,
         dilation=dilation, group=cfg.RESNETS.NUM_GROUPS,
-        downsample=downsample)
+        downsample=downsample
+    )
 
     return res_block
 
@@ -223,21 +264,27 @@ def basic_gn_shortcut(inplanes, outplanes, stride):
 # ------------------------------------------------------------------------------
 
 def basic_bn_stem():
-    return nn.Sequential(OrderedDict([
-        ('conv1', nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False)),
-        ('bn1', mynn.AffineChannel2d(64)),
-        ('relu', nn.ReLU(inplace=True)),
-        # ('maxpool', nn.MaxPool2d(kernel_size=3, stride=2, padding=0, ceil_mode=True))]))
-        ('maxpool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))]))
+    return nn.Sequential(
+        OrderedDict([
+            ('conv1', nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False)),
+            ('bn1', mynn.AffineChannel2d(64)),
+            ('relu', nn.ReLU(inplace=True)),
+            # ('maxpool', nn.MaxPool2d(kernel_size=3, stride=2, padding=0, ceil_mode=True))]))
+            ('maxpool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        ])
+    )
 
 
 def basic_gn_stem():
-    return nn.Sequential(OrderedDict([
-        ('conv1', nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False)),
-        ('gn1', nn.GroupNorm(net_utils.get_group_gn(64), 64,
-                             eps=cfg.GROUP_NORM.EPSILON)),
-        ('relu', nn.ReLU(inplace=True)),
-        ('maxpool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))]))
+    return nn.Sequential(
+        OrderedDict([
+            ('conv1', nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False)),
+            ('gn1', nn.GroupNorm(net_utils.get_group_gn(64), 64,
+                                 eps=cfg.GROUP_NORM.EPSILON)),
+            ('relu', nn.ReLU(inplace=True)),
+            ('maxpool', nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        ])
+    )
 
 
 # ------------------------------------------------------------------------------
@@ -247,8 +294,10 @@ def basic_gn_stem():
 class bottleneck_transformation(nn.Module):
     """ Bottleneck Residual Block """
 
-    def __init__(self, inplanes, outplanes, innerplanes, stride=1, dilation=1, group=1,
-                 downsample=None):
+    def __init__(
+        self, inplanes, outplanes, innerplanes,
+        stride=1, dilation=1, group=1, downsample=None
+    ):
         super().__init__()
         # In original resnet, stride=2 is on 1x1.
         # In fb.torch resnet, stride=2 is on 3x3.
@@ -297,8 +346,10 @@ class bottleneck_transformation(nn.Module):
 class bottleneck_gn_transformation(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, outplanes, innerplanes, stride=1, dilation=1, group=1,
-                 downsample=None):
+    def __init__(
+        self, inplanes, outplanes, innerplanes,
+        stride=1, dilation=1, group=1, downsample=None
+    ):
         super().__init__()
         # In original resnet, stride=2 is on 1x1.
         # In fb.torch resnet, stride=2 is on 3x3.

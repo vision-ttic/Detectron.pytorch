@@ -46,7 +46,7 @@ class RoiDataLoader(data.Dataset):
         index, ratio = index_tuple
         single_db = [self._roidb[index]]
         blobs, valid = get_minibatch(single_db)
-        #TODO: Check if minibatch is valid ? If not, abandon it.
+        # TODO: Check if minibatch is valid ? If not, abandon it.
         # Need to change _worker_loop in torch.utils.data.dataloader.py.
 
         # Squeeze batch dim
@@ -63,13 +63,17 @@ class RoiDataLoader(data.Dataset):
             invalid = (boxes[:, 0] == boxes[:, 2]) | (boxes[:, 1] == boxes[:, 3])
             valid_inds = np.nonzero(~ invalid)[0]
             if len(valid_inds) < len(boxes):
-                for key in ['boxes', 'gt_classes', 'seg_areas', 'gt_overlaps', 'is_crowd',
-                            'box_to_gt_ind_map', 'gt_keypoints']:
+                for key in [
+                    'boxes', 'gt_classes', 'seg_areas',
+                    'gt_overlaps', 'is_crowd', 'box_to_gt_ind_map',
+                    'gt_keypoints'
+                ]:
                     if key in entry:
                         entry[key] = entry[key][valid_inds]
                 entry['segms'] = [entry['segms'][ind] for ind in valid_inds]
 
-        blobs['roidb'] = blob_utils.serialize(blobs['roidb'])  # CHECK: maybe we can serialize in collate_fn
+        # CHECK: maybe we can serialize in collate_fn
+        blobs['roidb'] = blob_utils.serialize(blobs['roidb'])
 
         return blobs
 
@@ -77,7 +81,7 @@ class RoiDataLoader(data.Dataset):
         """
         HC:
         this croppping does not take care of rpn labels and reg targets.
-        Can be seriously wrong.
+        It is seriously wrong.
         """
         data_height, data_width = map(int, blobs['im_info'][:2])
         boxes = blobs['roidb'][0]['boxes']
@@ -144,15 +148,16 @@ class RoiDataLoader(data.Dataset):
 
 
 def cal_minibatch_ratio(ratio_list):
-    """Given the ratio_list, we want to make the RATIO same for each minibatch on each GPU.
-    Note: this only work for 1) cfg.TRAIN.MAX_SIZE is ignored during `prep_im_for_blob`
-    and 2) cfg.TRAIN.SCALES containing SINGLE scale.
-    Since all prepared images will have same min side length of cfg.TRAIN.SCALES[0], we can
-     pad and batch images base on that.
+    """Given the ratio_list, we want to make the RATIO same for each minibatch
+    on each GPU. Note: this only work for 1) cfg.TRAIN.MAX_SIZE is ignored during
+    `prep_im_for_blob` and 2) cfg.TRAIN.SCALES containing SINGLE scale.
+    Since all prepared images will have same min side length of cfg.TRAIN.SCALES[0],
+    we can pad and batch images base on that.
     """
     DATA_SIZE = len(ratio_list)
     ratio_list_minibatch = np.empty((DATA_SIZE,))
-    num_minibatch = int(np.ceil(DATA_SIZE / cfg.TRAIN.IMS_PER_BATCH))  # Include leftovers
+    # Include leftovers
+    num_minibatch = int(np.ceil(DATA_SIZE / cfg.TRAIN.IMS_PER_BATCH))
     for i in range(num_minibatch):
         left_idx = i * cfg.TRAIN.IMS_PER_BATCH
         right_idx = min((i+1) * cfg.TRAIN.IMS_PER_BATCH - 1, DATA_SIZE - 1)
@@ -193,7 +198,9 @@ class MinibatchSampler(torch_sampler.Sampler):
             n, rem = divmod(self.num_data, cfg.TRAIN.IMS_PER_BATCH)
             round_num_data = n * cfg.TRAIN.IMS_PER_BATCH
             indices = np.arange(round_num_data)
-            npr.shuffle(indices.reshape(-1, cfg.TRAIN.IMS_PER_BATCH))  # inplace shuffle
+            # inplace shuffle
+            # HC: smart reshape [num_batches, batch_size] and shuffle along the 1st
+            npr.shuffle(indices.reshape(-1, cfg.TRAIN.IMS_PER_BATCH))
             if rem != 0:
                 indices = np.append(
                     indices, np.arange(round_num_data, round_num_data + rem))
@@ -259,19 +266,18 @@ class BatchSampler(torch_sampler.BatchSampler):
             return (len(self.sampler) + self.batch_size - 1) // self.batch_size
 
 
-
 def collate_minibatch(list_of_blobs):
     """Stack samples seperately and return a list of minibatches
-    A batch contains NUM_GPUS minibatches and image size in different minibatch may be different.
-    Hence, we need to stack smaples from each minibatch seperately.
-    """
-    """
+    A batch contains NUM_GPUS minibatches and image size in different
+    minibatch may be different. Hence, we need to stack smaples from
+    each minibatch seperately.
+
     HC:
-    Batch contains lists so that it can be split later by parallel forward
+        Batch contains lists so that it can be split later by parallel forward
     """
     Batch = {key: [] for key in list_of_blobs[0]}
-    # Because roidb consists of entries of variable length, it can't be batch into a tensor.
-    # So we keep roidb in the type of "list of ndarray".
+    # Because roidb consists of entries of variable length, it can't be
+    # batch into a tensor. So we keep roidb in the type of "list of ndarray".
     list_of_roidb = [blobs.pop('roidb') for blobs in list_of_blobs]
     for i in range(0, len(list_of_blobs), cfg.TRAIN.IMS_PER_BATCH):
         mini_list = list_of_blobs[i:(i + cfg.TRAIN.IMS_PER_BATCH)]
@@ -286,7 +292,9 @@ def collate_minibatch(list_of_blobs):
 
 
 def pad_image_data(list_of_blobs):
-    max_shape = blob_utils.get_max_shape([blobs['data'].shape[1:] for blobs in list_of_blobs])
+    max_shape = blob_utils.get_max_shape(
+        [blobs['data'].shape[1:] for blobs in list_of_blobs]
+    )
     output_list = []
     for blobs in list_of_blobs:
         data_padded = np.zeros((3, max_shape[0], max_shape[1]), dtype=np.float32)

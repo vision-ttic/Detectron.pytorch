@@ -107,7 +107,7 @@ class fpn(nn.Module):
         # For other levels add top-down and lateral connections
         for i in range(self.num_backbone_stages - 1):
             self.topdown_lateral_modules.append(
-                topdown_lateral_module(fpn_dim, fpn_dim_lateral[i+1])
+                topdown_lateral_module(fpn_dim, fpn_dim_lateral[i + 1])
             )
 
         # Post-hoc scale-specific 3x3 convs
@@ -228,12 +228,14 @@ class fpn(nn.Module):
         conv_body_blobs = [self.conv_body.res1(x)]
         for i in range(1, self.conv_body.convX):
             conv_body_blobs.append(
-                getattr(self.conv_body, 'res%d' % (i+1))(conv_body_blobs[-1])
+                getattr(self.conv_body, 'res%d' % (i + 1))(conv_body_blobs[-1])
             )
         fpn_inner_blobs = [self.conv_top(conv_body_blobs[-1])]
         for i in range(self.num_backbone_stages - 1):
             fpn_inner_blobs.append(
-                self.topdown_lateral_modules[i](fpn_inner_blobs[-1], conv_body_blobs[-(i+2)])
+                self.topdown_lateral_modules[i](
+                    fpn_inner_blobs[-1], conv_body_blobs[-(i + 2)]
+                )
             )
         fpn_output_blobs = []
         for i in range(self.num_backbone_stages):
@@ -312,6 +314,7 @@ def get_min_max_levels():
         max_level = cfg.FPN.ROI_MAX_LEVEL
         min_level = cfg.FPN.ROI_MIN_LEVEL
     if cfg.FPN.MULTILEVEL_RPN and cfg.FPN.MULTILEVEL_ROIS:
+        # HC: rpn (2, 6) vs roi(2, 5) So feature cropping only up to res4
         max_level = max(cfg.FPN.RPN_MAX_LEVEL, cfg.FPN.ROI_MAX_LEVEL)
         min_level = min(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.ROI_MIN_LEVEL)
     return min_level, max_level
@@ -341,15 +344,17 @@ class fpn_rpn_outputs(nn.Module):
         k_max = cfg.FPN.RPN_MAX_LEVEL  # coarsest level of pyramid
         k_min = cfg.FPN.RPN_MIN_LEVEL  # finest level of pyramid
         for lvl in range(k_min, k_max + 1):
-            sc = self.spatial_scales[k_max - lvl]  # in reversed order
+            sc = self.spatial_scales[k_max - lvl]  # spatial scales in reversed order
             lvl_anchors = generate_anchors(
                 stride=2.**lvl,
                 sizes=(cfg.FPN.RPN_ANCHOR_START_SIZE * 2.**(lvl - k_min), ),
                 aspect_ratios=cfg.FPN.RPN_ASPECT_RATIOS
             )
-            self.GenerateProposals_modules.append(GenerateProposalsOp(lvl_anchors, sc))
-
-        self.CollectAndDistributeFpnRpnProposals = CollectAndDistributeFpnRpnProposalsOp()
+            self.GenerateProposals_modules.append(
+                GenerateProposalsOp(lvl_anchors, sc)
+            )
+        self.CollectAndDistributeFpnRpnProposals = \
+            CollectAndDistributeFpnRpnProposalsOp()
 
         self._init_weights()
 
@@ -390,7 +395,8 @@ class fpn_rpn_outputs(nn.Module):
             return_dict['rpn_cls_logits_fpn' + slvl] = fpn_rpn_cls_score
             return_dict['rpn_bbox_pred_fpn' + slvl] = fpn_rpn_bbox_pred
 
-            if not self.training or cfg.MODEL.FASTER_RCNN:
+            # if not self.training or cfg.MODEL.FASTER_RCNN:
+            if not (self.training and cfg.MODEL.RPN_ONLY):
                 # Proposals are needed during:
                 #  1) inference (== not model.train) for RPN only and Faster R-CNN
                 #  OR
@@ -404,8 +410,10 @@ class fpn_rpn_outputs(nn.Module):
                 else:  # sigmoid
                     fpn_rpn_cls_probs = F.sigmoid(fpn_rpn_cls_score)
 
-                fpn_rpn_rois, fpn_rpn_roi_probs = self.GenerateProposals_modules[lvl - k_min](
-                    fpn_rpn_cls_probs, fpn_rpn_bbox_pred, im_info)
+                fpn_rpn_rois, fpn_rpn_roi_probs = \
+                    self.GenerateProposals_modules[lvl - k_min](
+                        fpn_rpn_cls_probs, fpn_rpn_bbox_pred, im_info
+                    )
                 rois_blobs.append(fpn_rpn_rois)
                 score_blobs.append(fpn_rpn_roi_probs)
                 return_dict['rpn_rois_fpn' + slvl] = fpn_rpn_rois
@@ -413,7 +421,9 @@ class fpn_rpn_outputs(nn.Module):
 
         if cfg.MODEL.FASTER_RCNN:
             # this labels proposals under training mode
-            blobs_out = self.CollectAndDistributeFpnRpnProposals(rois_blobs + score_blobs, roidb, im_info)
+            blobs_out = self.CollectAndDistributeFpnRpnProposals(
+                rois_blobs + score_blobs, roidb, im_info
+            )
             return_dict.update(blobs_out)
 
         return return_dict

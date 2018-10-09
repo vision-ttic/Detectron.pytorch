@@ -8,6 +8,20 @@ import utils.boxes as box_utils
 
 logger = logging.getLogger(__name__)
 
+"""
+HC:
+    This op accepts _batched_ inputs
+        rpn_cls_prob:  [N, A, H, W]
+        rpn_bbox_pred: [N, 4A, H, w]
+        im_info:       [N, 3]
+    But returns _unbatched_ outputs
+        {
+            rpn_rois: [R, 5] with the first of the 5 being batch_idx
+            rpn_roi_probs: [R]
+        }
+    Interesting design.
+"""
+
 
 class GenerateProposalsOp(nn.Module):
     def __init__(self, anchors, spatial_scale):
@@ -70,8 +84,31 @@ class GenerateProposalsOp(nn.Module):
         shift_x, shift_y = np.meshgrid(shift_x, shift_y, copy=False)
         # Convert to (K, 4), K=H*W, where the columns are (dx, dy, dx, dy)
         # shift pointing to each grid location
-        shifts = np.vstack((shift_x.ravel(), shift_y.ravel(), shift_x.ravel(),
-                            shift_y.ravel())).transpose()
+        shifts = np.vstack([
+            shift_x.ravel(),
+            shift_y.ravel(),
+            shift_x.ravel(),
+            shift_y.ravel()
+        ]).transpose()
+        '''
+        HC:
+        K: number of grid points.
+        Want a tsr of size (K, A, 4) where each grid point has A number of anchors.
+        Since each anchor comes in (x1, y1, x2, y2), and the primary anchor group
+        is pinned top-left at 0,0. We need to shift x1, x2 and y1, y2 indpendently
+        through the grid. Hence the shifts array.
+        An example shift array (after transpose) with 3x3 grid and stride 16.
+        Each row represents a shift on the 4 coordinates of an anchor
+        [[ 0  0  0  0]
+         [16  0 16  0]
+         [32  0 32  0]
+         [ 0 16  0 16]
+         [16 16 16 16]
+         [32 16 32 16]
+         [ 0 32  0 32]
+         [16 32 16 32]
+         [32 32 32 32]]
+        '''
 
         # Broacast anchors over shifts to enumerate all anchors at all positions
         # in the (H, W) grid:
@@ -135,8 +172,9 @@ class GenerateProposalsOp(nn.Module):
         else:
             # Avoid sorting possibly large arrays; First partition to get top K
             # unsorted and then sort just those (~20x faster for 200k scores)
-            inds = np.argpartition(-scores.squeeze(),
-                                   pre_nms_topN)[:pre_nms_topN]
+            inds = np.argpartition(
+                -scores.squeeze(), pre_nms_topN
+            )[:pre_nms_topN]
             order = np.argsort(-scores[inds].squeeze())
             order = inds[order]
         bbox_deltas = bbox_deltas[order, :]
@@ -144,12 +182,13 @@ class GenerateProposalsOp(nn.Module):
         scores = scores[order]
 
         # Transform anchors into proposals via bbox transformations
-        proposals = box_utils.bbox_transform(all_anchors, bbox_deltas,
-                                             (1.0, 1.0, 1.0, 1.0))
+        proposals = box_utils.bbox_transform(
+            all_anchors, bbox_deltas, (1.0, 1.0, 1.0, 1.0))
 
         # 2. clip proposals to image (may result in proposals with zero area
         # that will be removed in the next step)
-        proposals = box_utils.clip_tiled_boxes(proposals, im_info[:2])  #(12000, 4)
+        # (12000, 4)
+        proposals = box_utils.clip_tiled_boxes(proposals, im_info[:2])
 
         # 3. remove predicted boxes with either height or width < min_size
         keep = _filter_boxes(proposals, min_size, im_info)
@@ -163,6 +202,7 @@ class GenerateProposalsOp(nn.Module):
         if nms_thresh > 0:
             keep = box_utils.nms(np.hstack((proposals, scores)), nms_thresh)
             # print('nms keep:', keep.shape)
+            # HC: what if keep has a shape[0] < post_nms_topN
             if post_nms_topN > 0:
                 keep = keep[:post_nms_topN]
             proposals = proposals[keep, :]

@@ -48,6 +48,7 @@ for each img:
     flickr_url: yy.com
     height: 300
     width: 600
+
     ------ by _add_gt_annotations or _merge_proposal_boxes_into_roidb ---------
     flipped: true
     has_visible_keypoints: False
@@ -59,9 +60,11 @@ for each img:
     is_crowd: arr(8,) of Boolean
     gt_overlaps: sparse arr(8, 81). This is about cls, not box. Every box has it.
     box_to_gt_ind_map: arr(8,)
-    --------------- by _add_class_assignments ----------
+
+    ------------ by _add_class_assignments, derived from gt_overlaps ----------
     max_classes: arr(8,) Every box has max_* but only gt have valid gt_classes.
     max_overlaps: arr(8,)
+
     -----------by bbox_regression ------------
     bbox_targets: arr(8,5)
     }
@@ -222,23 +225,36 @@ def rank_for_training(roidb):
     ratio_index = np.argsort(ratio_list)
     return ratio_list[ratio_index], ratio_index
 
+
 def add_bbox_regression_targets(roidb):
     """Add information needed to train bounding-box regressors."""
     for entry in roidb:
         entry['bbox_targets'] = _compute_targets(entry)
 
 
-"""
-box_to_gt_ind_map differs from gt_assignment in that gt_assignment allows
-crowd objects as ground truths. This does not.
-"""
 def _compute_targets(entry):
     """Compute bounding-box regression targets for an image."""
+    """
+    box_to_gt_ind_map vs gt_assignment here
+    box_to_gt_ind_map: allows crowds as gts
+    gt_assignment    : doesn't allow
+
+    Under fast rcnn training, proposals will have their regression targets
+    computed here. roi_data/fast_rcnn also provides a code path to compute
+    targets. Compare them for subtle differences
+
+    WARNING:
+        Gt box has max_overlaps set to -1 for all 81 classes.
+        It will not be among ex_inds. Safe.
+        A proposal, however, can have its max_overlaps with class of crowd gt
+        And in this case, that class allegiance is dislodged from bbox targets
+        This is potentially a problem. MUST FILTER CROWD PROPOSALS??
+    """
     # Indices of ground-truth ROIs
     rois = entry['boxes']
     overlaps = entry['max_overlaps']
     labels = entry['max_classes']
-    # HC: indices of ground truth boxes
+    # HC: indices of non-crowd ground truth boxes. WARNING fast_rcnn.py: 165
     gt_inds = np.where((entry['gt_classes'] > 0) & (entry['is_crowd'] == 0))[0]
     # Targets has format (class, tx, ty, tw, th)
     targets = np.zeros((rois.shape[0], 5), dtype=np.float32)
@@ -247,12 +263,13 @@ def _compute_targets(entry):
         return targets
 
     # Indices of examples for which we try to make predictions
-    ex_inds = np.where(overlaps >= cfg.TRAIN.BBOX_THRESH)[0]
+    ex_inds = np.where(overlaps >= cfg.TRAIN.BBOX_THRESH)[0]  # HC: 0.5
 
     # Get IoU overlap between each ex ROI and gt ROI
     ex_gt_overlaps = box_utils.bbox_overlaps(
         rois[ex_inds, :].astype(dtype=np.float32, copy=False),
-        rois[gt_inds, :].astype(dtype=np.float32, copy=False))
+        rois[gt_inds, :].astype(dtype=np.float32, copy=False)
+    )
 
     # Find which gt ROI each ex ROI has max overlap with:
     # this will be the ex ROI's gt target

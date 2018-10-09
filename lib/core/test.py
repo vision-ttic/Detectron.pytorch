@@ -153,6 +153,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     for key in inputs.keys():
         # HC: used for inputs['rois'] and potential other future additions.
         # the purpose of listing is for it to be split by data parallel layer
+        # These things do not need to be torch tensor.
         if key not in ('data', 'im_info'):
             inputs[key] = [inputs[key]]
 
@@ -179,7 +180,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
         if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
             # (legacy) Optionally normalize targets by a precomputed mean and stdev
             box_deltas = box_deltas.view(-1, 4) * cfg.TRAIN.BBOX_NORMALIZE_STDS \
-                         + cfg.TRAIN.BBOX_NORMALIZE_MEANS
+                + cfg.TRAIN.BBOX_NORMALIZE_MEANS
         pred_boxes = box_utils.bbox_transform(boxes, box_deltas, cfg.MODEL.BBOX_REG_WEIGHTS)
         pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im.shape)
         if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:

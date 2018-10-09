@@ -33,6 +33,20 @@ import cv2
 
 from core.config import cfg
 
+"""
+HC:
+    get_image_blob:
+        exposed to testing to prep single img. Calls the next 2 functions
+    ----
+    prep_im_for_blob:
+        subtract mean pixels and scale
+    im_list_to_blob:
+        cat a list of ims to a ready NCHW tsr
+
+    Note the above 2 functions are separately exposed to train loader to form
+    batch. The core functionalities are in these 2
+"""
+
 
 def get_image_blob(im, target_scale, target_max_size):
     """Convert an image into a network input.
@@ -118,7 +132,8 @@ def prep_im_for_blob(im, pixel_means, target_sizes, max_size):
     ims = []
     im_scales = []
     for target_size in target_sizes:
-        im_scale = get_target_scale(im_size_min, im_size_max, target_size, max_size)
+        im_scale = get_target_scale(
+            im_size_min, im_size_max, target_size, max_size)
         im_resized = cv2.resize(im, None, None, fx=im_scale, fy=im_scale,
                                 interpolation=cv2.INTER_LINEAR)
         ims.append(im_resized)

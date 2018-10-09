@@ -96,8 +96,7 @@ if __name__ == '__main__':
         merge_cfg_from_list(args.set_cfgs)
 
     if args.dataset == "coco2017":
-        # cfg.TEST.DATASETS = ('coco_2017_val',)
-        cfg.TEST.DATASETS = ('coco_2014_valminusminival',)
+        cfg.TEST.DATASETS = ('coco_2017_val',)
         cfg.MODEL.NUM_CLASSES = 81
     elif args.dataset == "keypoints_coco2017":
         cfg.TEST.DATASETS = ('keypoints_coco_2017_val',)
